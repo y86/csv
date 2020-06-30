@@ -29,6 +29,19 @@ defmodule CSV.Decoding.Parser do
   def parse({tokens, raw_line, index}, options) do
     case parse([], "", tokens, :unescaped, options) do
       {:ok, row} -> {:ok, row, index}
+      ## hack to allow not escaped quotes
+      {:error, StrayQuoteError, message} -> 
+        case Keyword.get(options, StrayQuoteError) do
+          true -> 
+            {:error, StrayQuoteError, message, index}
+            |> append_raw_line?(raw_line, options)
+          _ ->
+            options = Keyword.put(options, StrayQuoteError, true)
+            # escape potential single quotes and try again once
+            escaped_raw_line = Regex.replace(~r/(?<!")"(?!")/, raw_line, "\"\"")
+            {:ok, lex, _} = CSV.Decoding.Lexer.lex({escaped_raw_line, index}, options)
+            parse({lex, escaped_raw_line, index}, options)
+        end
       {:error, type, message} -> 
         {:error, type, message, index}
         |> append_raw_line?(raw_line, options)
